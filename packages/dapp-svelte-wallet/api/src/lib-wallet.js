@@ -482,27 +482,15 @@ export function makeWallet({
 
   // === API
 
-  const addIssuer = async (petnameForBrand, issuerP, makePurse = false) => {
+  const addIssuer = async (petnameForBrand, issuerP) => {
     const { brand, issuer } = await brandTable.initIssuer(issuerP);
     if (!issuerToBoardId.has(issuer)) {
       const issuerBoardId = await E(board).getId(issuer);
       issuerToBoardId.init(issuer, issuerBoardId);
     }
-    const addBrandPetname = () => {
-      let p;
-      const already = brandMapping.valToPetname.has(brand);
-      petnameForBrand = brandMapping.suggestPetname(petnameForBrand, brand);
-      if (!already && makePurse) {
-        // eslint-disable-next-line no-use-before-define
-        p = makeEmptyPurse(petnameForBrand, petnameForBrand);
-      } else {
-        p = Promise.resolve();
-      }
-      return p.then(
-        _ => `issuer ${q(petnameForBrand)} successfully added to wallet`,
-      );
-    };
-    return addBrandPetname().then(updateAllIssuersState);
+    brandMapping.suggestPetname(petnameForBrand, brand);
+    updateAllIssuersState();
+    return issuer;
   };
 
   const publishIssuer = async brand => {
@@ -1278,6 +1266,11 @@ export function makeWallet({
     return brandTable.getByBrand(brand).issuer;
   }
 
+  function getBrand(petname) {
+    const brand = brandMapping.petnameToVal.get(petname);
+    return brand;
+  }
+
   function getSelfContact() {
     return selfContact;
   }
@@ -1290,7 +1283,95 @@ export function makeWallet({
     return installationMapping.petnameToVal.get(petname);
   }
 
+  function getInstallations() {
+    return installationMapping.petnameToVal.entries();
+  }
+
+  const installationManager = harden({
+    rename: async (petname, thing) => {
+      instanceMapping.renamePetname(petname, thing);
+      await updateAllState();
+      return `instance ${q(petname)} successfully renamed in wallet`;
+    },
+    get: petname => installationMapping.petnameToVal.get(petname),
+    getAll: () => installationMapping.petnameToVal.entries(),
+    add: (petname, thing) => addInstallation(petname, thing),
+  });
+
+  const instanceManager = harden({
+    rename: async (petname, instance) => {
+      instanceMapping.renamePetname(petname, instance);
+      await updateAllState();
+      return `instance ${q(petname)} successfully renamed in wallet`;
+    },
+    get: petname => instanceMapping.petnameToVal.get(petname),
+    getAll: () => instanceMapping.petnameToVal.entries(),
+    add: (petname, instanceHandle) => {
+      // We currently just add the petname mapped to the instanceHandle
+      // value, but we could have a list of known instances for
+      // possible display in the wallet.
+      petname = instanceMapping.suggestPetname(petname, instanceHandle);
+      // We don't wait for the update before returning.
+      updateAllState();
+      return `instance ${q(petname)} successfully added to wallet`;
+    },
+  });
+
+  function getInstallationManager() {
+    return installationManager;
+  }
+
+  function getInstanceManager() {
+    return instanceManager;
+  }
+
+  async function findAllInvitationAmount(invitationDetailsCriteria) {
+    const zoeInvitationPurse = getPurse('Default Zoe invite purse');
+    const invitationAmount = await E(zoeInvitationPurse).getCurrentAmount();
+
+    // TODO: Improve efficiency
+    // For every key and value in invitationDetailsCriteria, return an amount
+    // with any matches for those exact keys and values. Keys not in
+    // invitationDetails count as a match
+    const matches = invitationDetail =>
+      Object.entries(invitationDetailsCriteria).every(
+        ([key, value]) => invitationDetail[key] === value,
+      );
+
+    // Filter rather than find so that we potentially get more than one result
+    const matchingValue = invitationAmount.value.filter(matches);
+    // assert(matchingValue.length <= 1, `more than one invitation was
+    // found`);
+
+    // TODO: use variable for issuer name
+    const brand = brandMapping.petnameToVal.get('zoe invite');
+    const invitationMath = brandTable.getByBrand(brand).amountMath;
+    return invitationMath.make(harden(matchingValue));
+  }
+
+  // should this be generalized? should a purse have a search
+  // function? Or this is a fuzzy withdrawal specifically for MathKind
+  // SET. Hmm, we probably don't want a fuzzy withdrawal in ERTP
+  async function findInvitationAmount(invitationDetailsCriteria) {
+    const allAmount = await findAllInvitationAmount(invitationDetailsCriteria);
+    const brand = brandMapping.petnameToVal.get('zoe invite');
+    const invitationMath = brandTable.getByBrand(brand).amountMath;
+    return invitationMath.make(harden([allAmount.value[0]]));
+  }
+
+  const offerResultStore = makeWeakStore('invitationHandle');
+
+  async function saveOfferResult(invitationHandle, offerResult) {
+    offerResultStore.init(invitationHandle, offerResult);
+  }
+
+  async function getOfferResult(invitationHandle) {
+    return offerResultStore.get(invitationHandle);
+  }
+
   const wallet = harden({
+    saveOfferResult,
+    getOfferResult,
     waitForDappApproval,
     getDappsNotifier() {
       return dappsNotifier;
@@ -1305,15 +1386,21 @@ export function makeWallet({
       return offersNotifier;
     },
     addIssuer,
+    getBrand,
     publishIssuer,
     addInstance,
     addInstallation,
+    getInstallationManager,
+    getInstanceManager,
     renameIssuer,
     renameInstance,
     renameInstallation,
+    findInvitationAmount,
+    findAllInvitationAmount,
     getSelfContact,
     getInstance,
     getInstallation,
+    getInstallations,
     makeEmptyPurse,
     deposit,
     getIssuer,

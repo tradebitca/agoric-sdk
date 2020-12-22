@@ -555,7 +555,7 @@ test('lib-wallet dapp suggests issuer, instance, installation petnames', async t
 });
 
 test('lib-wallet offer methods', async t => {
-  t.plan(8);
+  t.plan(9);
   const {
     moolaBundle,
     wallet,
@@ -652,6 +652,10 @@ test('lib-wallet offer methods', async t => {
   const inviteHandleBoardId2 = await E(board).getId(inviteHandle2);
   const offer2 = formulateBasicOffer(rawId2, inviteHandleBoardId2);
   await wallet.deposit('Default Zoe invite purse', invite2);
+
+  const amount = await wallet.findInvitationAmount(harden({ instance }));
+  t.deepEqual(amount.value[0].description, 'getRefund');
+
   // `addOffer` withdraws the invite from the Zoe invite purse.
   await wallet.addOffer(offer2);
   await wallet.declineOffer(id2);

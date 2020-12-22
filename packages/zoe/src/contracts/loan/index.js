@@ -3,6 +3,7 @@ import '../../../exported';
 
 import { assert } from '@agoric/assert';
 
+import { makeAsyncIterableFromNotifier } from '@agoric/notifier';
 import { assertIssuerKeywords } from '../../contractSupport';
 import { makeLendInvitation } from './lend';
 
@@ -59,14 +60,18 @@ const start = async zcf => {
     mmr = 150, // Maintenance Margin Requirement
     autoswapInstance,
     priceAuthority,
-    periodAsyncIterable,
+    periodNotifier,
     interestRate,
   } = zcf.getTerms();
 
   assert(autoswapInstance, `autoswapInstance must be provided`);
   assert(priceAuthority, `priceAuthority must be provided`);
-  assert(periodAsyncIterable, `periodAsyncIterable must be provided`);
+  assert(periodNotifier, `periodNotifier must be provided`);
   assert(interestRate, `interestRate must be provided`);
+
+  // TODO: make this non-lossy (notifier is lossy)
+  // https://github.com/Agoric/agoric-sdk/issues/2108
+  const periodAsyncIterable = makeAsyncIterableFromNotifier(periodNotifier);
 
   /** @type {LoanTerms} */
   const config = {
