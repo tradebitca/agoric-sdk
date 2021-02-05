@@ -1,7 +1,6 @@
 // @ts-check
 
 import { assert, details } from '@agoric/assert';
-import { Far } from '@agoric/marshal';
 import { mustBeComparable } from '@agoric/same-structure';
 
 import './types';
@@ -54,138 +53,118 @@ export { MathKind };
  * function `coerce` takes an amount and checks it, returning an amount (amount
  * -> amount).
  *
- * `makeAmountMath` takes in a brand and the kind of amountMath to use.
- *
- * amountMath is not pass-by-copy, but everything it does can be done
- * locally in each vat that needs the functionality. If the operations
- * are done against a remote version, they have the same semantics, but
- * require an extra messaging round-trip per call. The best way to use
- * it is to make a local copy, which can be done by calling
- * makeLocalAmountMath(issuer).
- *
- * AmountMath exports MathKind, which contains constants for the kinds:
- * NAT, SET, and STRING_SET.
- *
  * Each issuer of digital assets has an associated brand in a one-to-one
  * mapping. In untrusted contexts, such as in analyzing payments and
  * amounts, we can get the brand and find the issuer which matches the
  * brand. The issuer and the brand mutually validate each other.
- *
- * @param {Brand} brand
- * @param {AmountMathKind} amountMathKind
- * @returns {AmountMath}
  */
-function makeAmountMath(brand, amountMathKind) {
-  mustBeComparable(brand);
-  assert.typeof(amountMathKind, 'string');
 
-  const mathHelpers = {
-    nat: natMathHelpers,
-    strSet: strSetMathHelpers,
-    set: setMathHelpers,
-  };
-  const helpers = mathHelpers[amountMathKind];
+const helpers = {
+  nat: natMathHelpers,
+  strSet: strSetMathHelpers,
+  set: setMathHelpers,
+};
+
+const sniffHelpers = value => {
+  if (typeof value === 'number') {
+    return natMathHelpers;
+  }
   assert(
-    helpers !== undefined,
-    details`unrecognized amountMathKind: ${amountMathKind}`,
+    Array.isArray(value),
+    details`value ${value} must be a number or an array`,
   );
+  if (typeof value[0] !== 'string') {
+    return setMathHelpers;
+  }
+  return strSetMathHelpers;
+};
 
-  // Cache the amount if we can.
-  const cache = new WeakSet();
+const optionalBrandCheck = (amount, brand) => {
+  if (brand !== undefined) {
+    mustBeComparable(brand);
+    assert.equal(amount.brand, brand);
+  }
+};
 
-  /** @type {AmountMath} */
-  const amountMath = Far('amountMath', {
-    getBrand: () => brand,
-    getAmountMathKind: () => amountMathKind,
+const noCoerceMake = (value, brand) => {
+  const amount = harden({ brand, value });
+  return amount;
+};
 
-    /**
-     * Make an amount from a value by adding the brand.
-     *
-     * @param {Value} allegedValue
-     * @returns {Amount}
-     */
-    make: allegedValue => {
-      const value = helpers.doCoerce(allegedValue);
-      const amount = harden({ brand, value });
-      cache.add(amount);
-      return amount;
-    },
+/** @type {AmountMath} */
+const amountMath = {
+  make: (allegedValue, brand) => {
+    mustBeComparable(brand);
+    const value = sniffHelpers(allegedValue).doCoerce(allegedValue);
+    const amount = harden({ brand, value });
+    return amount;
+  },
+  coerce: (allegedAmount, brand) => {
+    mustBeComparable(brand);
+    const { brand: allegedBrand, value } = allegedAmount;
+    assert(
+      allegedBrand !== undefined,
+      details`The brand in allegedAmount ${allegedAmount} is undefined. Did you pass a value rather than an amount?`,
+    );
+    assert(
+      brand === allegedBrand,
+      details`The brand in the allegedAmount ${allegedAmount} in 'coerce' didn't match the amountMath brand ${brand}.`,
+    );
+    // Will throw on inappropriate value
+    return amountMath.make(value, brand);
+  },
+  getValue: (amount, brand) => {
+    mustBeComparable(brand);
+    return amountMath.coerce(amount, brand).value;
+  },
+  makeEmpty: mathKind => {
+    assert(
+      helpers[mathKind],
+      details`${mathKind} must be MathKind.NAT, MathKind.SET, or MathKind.STRING_SET`,
+    );
+    return helpers[mathKind].doGetEmpty();
+  },
+  isEmpty: (amount, brand = undefined) => {
+    optionalBrandCheck(amount, brand);
+    return sniffHelpers(amount).doIsEmpty(amount.value);
+  },
+  isGTE: (leftAmount, rightAmount, brand = undefined) => {
+    optionalBrandCheck(leftAmount, brand);
+    optionalBrandCheck(rightAmount, brand);
+    assert.equal(leftAmount.brand, rightAmount.brand);
+    return sniffHelpers(leftAmount).doIsGTE(
+      leftAmount.value,
+      rightAmount.value,
+    );
+  },
+  isEqual: (leftAmount, rightAmount, brand = undefined) => {
+    optionalBrandCheck(leftAmount, brand);
+    optionalBrandCheck(rightAmount, brand);
+    assert.equal(leftAmount.brand, rightAmount.brand);
+    return sniffHelpers(leftAmount).doIsEqual(
+      leftAmount.value,
+      rightAmount.value,
+    );
+  },
+  add: (leftAmount, rightAmount, brand = undefined) => {
+    optionalBrandCheck(leftAmount, brand);
+    optionalBrandCheck(rightAmount, brand);
+    assert.equal(leftAmount.brand, rightAmount.brand);
+    return noCoerceMake(
+      sniffHelpers(leftAmount).doAdd(leftAmount.value, rightAmount.value),
+      leftAmount.brand,
+    );
+  },
+  subtract: (leftAmount, rightAmount, brand = undefined) => {
+    optionalBrandCheck(leftAmount, brand);
+    optionalBrandCheck(rightAmount, brand);
+    assert.equal(leftAmount.brand, rightAmount.brand);
+    return noCoerceMake(
+      sniffHelpers(leftAmount).doSubtract(leftAmount.value, rightAmount.value),
+      leftAmount.brand,
+    );
+  },
+};
+harden(amountMath);
 
-    /**
-     * Make sure this amount is valid and return it if so, throwing if invalid.
-     *
-     * @param {Amount} allegedAmount
-     * @returns {Amount} or throws if invalid
-     */
-    coerce: allegedAmount => {
-      // If the cache already has the allegedAmount, that
-      // means it is a valid amount.
-      if (cache.has(allegedAmount)) {
-        return allegedAmount;
-      }
-      const { brand: allegedBrand, value } = allegedAmount;
-      assert(
-        allegedBrand !== undefined,
-        details`The brand in allegedAmount ${allegedAmount} is undefined. Did you pass a value rather than an amount?`,
-      );
-      assert(
-        brand === allegedBrand,
-        details`The brand in the allegedAmount ${allegedAmount} in 'coerce' didn't match the amountMath brand ${brand}.`,
-      );
-      // Will throw on inappropriate value
-      return amountMath.make(value);
-    },
-
-    // Get the value from the amount.
-    getValue: amount => amountMath.coerce(amount).value,
-
-    // Represents the empty set/mathematical identity.
-    // eslint-disable-next-line no-use-before-define
-    getEmpty: () => empty,
-
-    // Is the amount equal to the empty set?
-    isEmpty: amount => helpers.doIsEmpty(amountMath.getValue(amount)),
-
-    // Is leftAmount greater than or equal to rightAmount? In other
-    // words, is everything in the rightAmount included in the
-    // leftAmount?
-    isGTE: (leftAmount, rightAmount) =>
-      helpers.doIsGTE(
-        amountMath.getValue(leftAmount),
-        amountMath.getValue(rightAmount),
-      ),
-
-    // Is leftAmount equal to rightAmount?
-    isEqual: (leftAmount, rightAmount) =>
-      helpers.doIsEqual(
-        amountMath.getValue(leftAmount),
-        amountMath.getValue(rightAmount),
-      ),
-
-    // Combine leftAmount and rightAmount.
-    add: (leftAmount, rightAmount) =>
-      amountMath.make(
-        helpers.doAdd(
-          amountMath.getValue(leftAmount),
-          amountMath.getValue(rightAmount),
-        ),
-      ),
-
-    // Return the amount included in leftAmount but not included in
-    // rightAmount. If leftAmount does not include all of rightAmount,
-    // error.
-    subtract: (leftAmount, rightAmount) =>
-      amountMath.make(
-        helpers.doSubtract(
-          amountMath.getValue(leftAmount),
-          amountMath.getValue(rightAmount),
-        ),
-      ),
-  });
-  const empty = amountMath.make(helpers.doGetEmpty());
-  return amountMath;
-}
-
-harden(makeAmountMath);
-
-export { makeAmountMath };
+export { amountMath };

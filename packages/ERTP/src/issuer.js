@@ -9,7 +9,7 @@ import { Far } from '@agoric/marshal';
 import { makeNotifierKit } from '@agoric/notifier';
 import { isPromise } from '@agoric/promise-kit';
 
-import { makeAmountMath, MathKind } from './amountMath';
+import { amountMath, MathKind } from './amountMath';
 import { makeFarName, ERTPKind } from './interfaces';
 import { coerceDisplayInfo } from './displayInfo';
 
@@ -39,10 +39,6 @@ function makeIssuerKit(
     getDisplayInfo: () => displayInfo,
   });
 
-  const amountMath = makeAmountMath(brand, amountMathKind);
-  const { add } = amountMath;
-  const empty = amountMath.getEmpty();
-
   const {
     makeInstance: makePayment,
     makeWeakStore: makePaymentWeakStore,
@@ -68,7 +64,7 @@ function makeIssuerKit(
   const assertAmountEqual = (paymentBalance, amount) => {
     if (amount !== undefined) {
       assert(
-        amountMath.isEqual(amount, paymentBalance),
+        amountMath.isEqual(amount, paymentBalance, brand),
         details`payment balance ${paymentBalance} must equal amount ${amount}`,
       );
     }
@@ -87,7 +83,7 @@ function makeIssuerKit(
   );
 
   const { makeInstance: makePurse } = makeExternalStore('purse', () => {
-    let currentBalance = amountMath.getEmpty();
+    let currentBalance = amountMath.makeEmpty(amountMathKind);
     /** @type {NotifierRecord<Amount>} */
     const {
       notifier: balanceNotifier,
@@ -109,6 +105,7 @@ function makeIssuerKit(
         const newPurseBalance = amountMath.add(
           srcPaymentBalance,
           currentBalance,
+          brand,
         );
         // Commit point
         // Move the assets in `srcPayment` into this purse, using up the
@@ -119,8 +116,12 @@ function makeIssuerKit(
         return srcPaymentBalance;
       },
       withdraw: amount => {
-        amount = amountMath.coerce(amount);
-        const newPurseBalance = amountMath.subtract(currentBalance, amount);
+        amount = amountMath.coerce(amount, brand);
+        const newPurseBalance = amountMath.subtract(
+          currentBalance,
+          amount,
+          brand,
+        );
         const payment = makePayment();
         // Commit point
         // Move the withdrawn assets from this purse into a new payment
@@ -140,6 +141,10 @@ function makeIssuerKit(
     const depositFacet = makeDepositFacet(purse);
     return purse;
   });
+
+  const add = (left, right) => amountMath.add(left, right, brand);
+  const empty = amountMath.makeEmpty(amountMathKind);
+  const coerce = allegedAmount => amountMath.coerce(allegedAmount, brand);
 
   /**
    * Reallocate assets from the `payments` passed in to new payments
@@ -178,7 +183,10 @@ function makeIssuerKit(
     const newTotal = newPaymentBalances.reduce(add, empty);
 
     // Invariant check
-    assert(amountMath.isEqual(total, newTotal), 'rights were not conserved');
+    assert(
+      amountMath.isEqual(total, newTotal, brand),
+      'rights were not conserved',
+    );
 
     // commit point
     payments.forEach(payment => paymentLedger.delete(payment));
@@ -248,12 +256,13 @@ function makeIssuerKit(
     // payment to two payments, A and B
     split: (paymentP, paymentAmountA) => {
       return E.when(paymentP, srcPayment => {
-        paymentAmountA = amountMath.coerce(paymentAmountA);
+        paymentAmountA = amountMath.coerce(paymentAmountA, brand);
         assertKnownPayment(srcPayment);
         const srcPaymentBalance = paymentLedger.get(srcPayment);
         const paymentAmountB = amountMath.subtract(
           srcPaymentBalance,
           paymentAmountA,
+          brand,
         );
         // Commit point
         const newPayments = reallocate(
@@ -266,7 +275,7 @@ function makeIssuerKit(
     splitMany: (paymentP, amounts) => {
       return E.when(paymentP, srcPayment => {
         assertKnownPayment(srcPayment);
-        amounts = amounts.map(amountMath.coerce);
+        amounts = amounts.map(coerce);
         // Commit point
         const newPayments = reallocate([srcPayment], amounts);
         return newPayments;
@@ -278,7 +287,7 @@ function makeIssuerKit(
   const mint = Far(makeFarName(allegedName, ERTPKind.MINT), {
     getIssuer: () => issuer,
     mintPayment: newAmount => {
-      newAmount = amountMath.coerce(newAmount);
+      newAmount = coerce(newAmount);
       const payment = makePayment();
       paymentLedger.init(payment, newAmount);
       return payment;
@@ -288,7 +297,6 @@ function makeIssuerKit(
   return harden({
     mint,
     issuer,
-    amountMath,
     brand,
   });
 }
