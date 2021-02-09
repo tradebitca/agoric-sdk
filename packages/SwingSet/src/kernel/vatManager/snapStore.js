@@ -3,37 +3,11 @@ import { createHash } from 'crypto';
 import { pipeline } from 'stream';
 import { createGzip, createGunzip } from 'zlib';
 import { assert, details as d } from '@agoric/assert';
+import { promisify } from 'util';
+
+const pipe = promisify(pipeline);
 
 const { freeze } = Object;
-
-/**
- * Adapt callback-style API using Promises.
- *
- * Instead of obj.method(...arg, callback),
- * use asPromise(cb => obj.method(...arg, cb)) and get a promise.
- *
- * @param {(cb: (err: E, result: T) => void) => void} calling
- * @returns { Promise<T> }
- * @template T
- * @template E
- */
-function asPromise(calling) {
-  function executor(
-    /** @type {(it: T) => void} */ resolve,
-    /** @type {(err: any) => void} */ reject,
-  ) {
-    const callback = (/** @type { E } */ err, /** @type {T} */ result) => {
-      if (err) {
-        reject(err);
-      }
-      resolve(result);
-    };
-
-    calling(callback);
-  }
-
-  return new Promise(executor);
-}
 
 /**
  * @param {string} root
@@ -59,6 +33,8 @@ export function makeSnapstore(
     unlink,
   },
 ) {
+  /** @type {(opts: unknown) => Promise<string>} */
+  const ptmpName = promisify(tmpName);
   const tmpOpts = { tmpdir: root, template: 'tmp-XXXXXX.xss' };
   /**
    * @param { (name: string) => Promise<T> } thunk
@@ -66,7 +42,7 @@ export function makeSnapstore(
    * @template T
    */
   async function withTempName(thunk) {
-    const name = await asPromise(cb => tmpName(tmpOpts, cb));
+    const name = await ptmpName(tmpOpts);
     const result = await thunk(name);
     try {
       await unlink(name);
@@ -83,7 +59,7 @@ export function makeSnapstore(
    * @template T
    */
   async function atomicWrite(dest, thunk) {
-    const tmp = await asPromise(cb => tmpName(tmpOpts, cb));
+    const tmp = await ptmpName(tmpOpts);
     const result = await thunk(tmp);
     await rename(tmp, resolve(root, dest));
     try {
@@ -98,16 +74,14 @@ export function makeSnapstore(
   async function filter(input, f, output) {
     const source = createReadStream(input);
     const destination = createWriteStream(output);
-    await asPromise(cb =>
-      pipeline(source, f, destination, err => cb(err, undefined)),
-    );
+    await pipe(source, f, destination);
   }
 
   /** @type {(filename: string) => Promise<string>} */
   async function fileHash(filename) {
     const h = createHash('sha256');
     const p = createReadStream(filename).pipe(h);
-    await asPromise(cb => p.end(cb));
+    await new Promise(cb => p.end(cb));
     return h.digest('hex');
   }
 
