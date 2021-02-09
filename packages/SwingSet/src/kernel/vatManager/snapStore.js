@@ -3,7 +3,6 @@ import { createHash } from 'crypto';
 import { pipeline } from 'stream';
 import { createGzip, createGunzip } from 'zlib';
 import { assert, details as d } from '@agoric/assert';
-import { xsnap } from '@agoric/xsnap';
 
 const { freeze } = Object;
 
@@ -18,7 +17,7 @@ const { freeze } = Object;
  * @template T
  * @template E
  */
-export function asPromise(calling) {
+function asPromise(calling) {
   function executor(
     /** @type {(it: T) => void} */ resolve,
     /** @type {(err: any) => void} */ reject,
@@ -37,9 +36,10 @@ export function asPromise(calling) {
 }
 
 /**
- * @param {*} root
+ * @param {string} root
  * @param {{
  *   tmpName: typeof import('tmp').tmpName,
+ *   existsSync: typeof import('fs').existsSync
  *   createReadStream: typeof import('fs').createReadStream,
  *   createWriteStream: typeof import('fs').createWriteStream,
  *   resolve: typeof import('path').resolve,
@@ -49,7 +49,15 @@ export function asPromise(calling) {
  */
 export function makeSnapstore(
   root,
-  { tmpName, createReadStream, createWriteStream, resolve, rename, unlink },
+  {
+    tmpName,
+    existsSync,
+    createReadStream,
+    createWriteStream,
+    resolve,
+    rename,
+    unlink,
+  },
 ) {
   /**
    * @param { (name: string) => Promise<T> } thunk
@@ -95,50 +103,51 @@ export function makeSnapstore(
   }
 
   /** @type {(filename: string) => Promise<string>} */
-  function hash(filename) {
-    return new Promise((done, _reject) => {
+  function fileHash(filename) {
+    return new Promise((done, reject) => {
+      const s = (() => {
+        try {
+          return createReadStream(filename);
+        } catch (err) {
+          return reject(err);
+        }
+      })();
+      if (!s) return;
+      s.on('error', reject);
       const h = createHash('sha256');
-      createReadStream(filename)
-        .pipe(h)
-        .end(_ => done(h.digest('hex')));
+      s.pipe(h).end(() => done(h.digest('hex')));
     });
   }
 
-  /** @type {(ref: string) => string} */
-  const r = ref => resolve(root, ref);
-  return freeze({ withTempName, atomicWrite, filter, hash, resolve: r });
-}
+  /**
+   * @param {(fn: string) => Promise<void>} saveRaw
+   * @returns { Promise<string> } sha256 hash of (uncompressed) snapshot
+   */
+  async function save(saveRaw) {
+    return withTempName(async snapFile => {
+      await saveRaw(snapFile);
+      const h = await fileHash(snapFile);
+      if (existsSync(`${h}.gz`)) return h;
+      await atomicWrite(`${h}.gz`, gztmp =>
+        filter(snapFile, createGzip(), gztmp),
+      );
+      return h;
+    });
+  }
 
-/**
- * @param {ReturnType<typeof xsnap>} xs
- * @param {ReturnType<typeof makeSnapstore>} store
- * @param {{
- *   existsSync: typeof import('fs').existsSync
- * }} io
- * @returns { Promise<string> } sha256 hash of (uncompressed) snapshot
- */
-export async function saveSnap(xs, store, { existsSync }) {
-  return store.withTempName(async snapFile => {
-    await xs.snapshot(snapFile);
-    const h = await store.hash(snapFile);
-    if (existsSync(`${h}.gz`)) return h;
-    await store.atomicWrite(`${h}.gz`, gztmp =>
-      store.filter(snapFile, createGzip(), gztmp),
-    );
-    return h;
-  });
-}
+  /**
+   * @param {string} hash
+   * @param {(fn: string) => Promise<T>} loadRaw
+   * @template T
+   */
+  async function load(hash, loadRaw) {
+    return withTempName(async raw => {
+      await filter(resolve(root, `${hash}.gz`), createGunzip(), raw);
+      const actual = await fileHash(raw);
+      assert(actual === hash, d`actual hash ${actual} !== expected ${hash}`);
+      return loadRaw(raw);
+    });
+  }
 
-/**
- * @param {ReturnType<typeof makeSnapstore>} store
- * @param {string} hash
- * @param {*} opts
- */
-export async function loadSnap(store, hash, opts) {
-  return store.withTempName(async raw => {
-    await store.filter(store.resolve(`${hash}.gz`), createGunzip(), raw);
-    const actual = await store.hash(raw);
-    assert(actual === hash, d`actual hash ${actual} !== expected ${hash}`);
-    return xsnap({ snapshot: raw, ...opts });
-  });
+  return freeze({ load, save });
 }
