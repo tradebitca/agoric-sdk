@@ -1,7 +1,9 @@
 // @ts-check
-import { assert } from '@agoric/assert';
 import { createHash } from 'crypto';
 import { pipeline } from 'stream';
+import { createGzip, createGunzip } from 'zlib';
+import { assert, details as d } from '@agoric/assert';
+import { xsnap } from '@agoric/xsnap';
 
 const { freeze } = Object;
 
@@ -35,7 +37,6 @@ export function asPromise(calling) {
 }
 
 /**
- *
  * @param {*} root
  * @param {{
  *   tmpName: typeof import('tmp').tmpName,
@@ -106,4 +107,38 @@ export function makeSnapstore(
   /** @type {(ref: string) => string} */
   const r = ref => resolve(root, ref);
   return freeze({ withTempName, atomicWrite, filter, hash, resolve: r });
+}
+
+/**
+ * @param {ReturnType<typeof xsnap>} xs
+ * @param {ReturnType<typeof makeSnapstore>} store
+ * @param {{
+ *   existsSync: typeof import('fs').existsSync
+ * }} io
+ * @returns { Promise<string> } sha256 hash of (uncompressed) snapshot
+ */
+export async function saveSnap(xs, store, { existsSync }) {
+  return store.withTempName(async snapFile => {
+    await xs.snapshot(snapFile);
+    const h = await store.hash(snapFile);
+    if (existsSync(`${h}.gz`)) return h;
+    await store.atomicWrite(`${h}.gz`, gztmp =>
+      store.filter(snapFile, createGzip(), gztmp),
+    );
+    return h;
+  });
+}
+
+/**
+ * @param {ReturnType<typeof makeSnapstore>} store
+ * @param {string} hash
+ * @param {*} opts
+ */
+export async function loadSnap(store, hash, opts) {
+  return store.withTempName(async raw => {
+    await store.filter(store.resolve(`${hash}.gz`), createGunzip(), raw);
+    const actual = await store.hash(raw);
+    assert(actual === hash, d`actual hash ${actual} !== expected ${hash}`);
+    return xsnap({ snapshot: raw, ...opts });
+  });
 }

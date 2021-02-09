@@ -2,7 +2,7 @@
 
 import '@agoric/install-ses';
 import { spawn } from 'child_process';
-import { createGzip, createGunzip } from 'zlib';
+import { createGzip } from 'zlib';
 import { type as osType } from 'os';
 import fs from 'fs';
 import path from 'path';
@@ -11,7 +11,11 @@ import test from 'ava';
 import tmp from 'tmp';
 import { xsnap } from '@agoric/xsnap';
 import bundleSource from '@agoric/bundle-source';
-import { makeSnapstore } from '../../src/kernel/vatManager/snapStore';
+import {
+  makeSnapstore,
+  saveSnap,
+  loadSnap,
+} from '../../src/kernel/vatManager/snapStore';
 
 const empty = new Uint8Array();
 
@@ -37,22 +41,6 @@ async function bootWorker(name, handleCommand) {
   await load('../../src/kernel/vatManager/lockdown-subprocess-xsnap.js');
   await load('../../src/kernel/vatManager/supervisor-subprocess-xsnap.js');
   return worker;
-}
-
-/**
- *
- * @param {ReturnType<typeof xsnap>} xs
- * @param {ReturnType<typeof makeSnapstore>} store
- */
-async function saveSnap(xs, store) {
-  await store.withTempName(async snapFile => {
-    await xs.snapshot(snapFile);
-    const h = await store.hash(snapFile);
-    if (fs.existsSync(`${h}.gz`)) return;
-    await store.atomicWrite(`${h}.gz`, async gztmp => {
-      await store.filter(snapFile, createGzip(), gztmp);
-    });
-  });
 }
 
 test('build temp file; compress to cache file', async t => {
@@ -136,7 +124,7 @@ test('bootstrap, save, compress', async t => {
   t.is(Kb(zfile), snapSize.compressed, 'compressed snapshots are smaller');
 });
 
-test('uncompress, restore, resume', async t => {
+test('create, save, restore, resume', async t => {
   const pool = path.resolve(__dirname, './fixture-snap-pool/');
   await fs.promises.mkdir(pool, { recursive: true });
 
@@ -150,13 +138,10 @@ test('uncompress, restore, resume', async t => {
   const vat0 = await bootWorker('test', async _ => empty);
   t.teardown(() => vat0.close());
   await vat0.evaluate('globalThis.x = harden({a: 1})');
-  await saveSnap(vat0, store);
+  await saveSnap(vat0, store, fs);
 
   const h = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
-  const worker = await store.withTempName(async raw => {
-    await store.filter(store.resolve(`${h}.gz`), createGunzip(), raw);
-    return xsnap({ snapshot: raw, os: osType(), spawn });
-  });
+  const worker = await loadSnap(store, h, { os: osType(), spawn });
   t.teardown(() => worker.close());
   worker.evaluate('x.a');
   t.pass();
