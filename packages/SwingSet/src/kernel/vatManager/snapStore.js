@@ -59,13 +59,14 @@ export function makeSnapstore(
     unlink,
   },
 ) {
+  const tmpOpts = { tmpdir: root, template: 'tmp-XXXXXX.xss' };
   /**
    * @param { (name: string) => Promise<T> } thunk
    * @returns { Promise<T> }
    * @template T
    */
   async function withTempName(thunk) {
-    const name = await asPromise(cb => tmpName({ tmpdir: root }, cb));
+    const name = await asPromise(cb => tmpName(tmpOpts, cb));
     const result = await thunk(name);
     try {
       await unlink(name);
@@ -82,7 +83,7 @@ export function makeSnapstore(
    * @template T
    */
   async function atomicWrite(dest, thunk) {
-    const tmp = await asPromise(cb => tmpName({ tmpdir: root }, cb));
+    const tmp = await asPromise(cb => tmpName(tmpOpts, cb));
     const result = await thunk(tmp);
     await rename(tmp, resolve(root, dest));
     try {
@@ -145,9 +146,17 @@ export function makeSnapstore(
       await filter(resolve(root, `${hash}.gz`), createGunzip(), raw);
       const actual = await fileHash(raw);
       assert(actual === hash, d`actual hash ${actual} !== expected ${hash}`);
-      return loadRaw(raw);
+      // be sure to await loadRaw before exiting withTempName
+      const result = await loadRaw(raw);
+      return result;
     });
   }
 
   return freeze({ load, save });
+}
+
+export function defaultSnapstorePath({ env = process.env }) {
+  // ISSUE: Windows paths?
+  const cache = env.XDG_CACHE_HOME || `${env.HOME}/.cache`;
+  return `${cache}/agoric-xs-snapshots/`;
 }
