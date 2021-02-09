@@ -1,4 +1,5 @@
 // @ts-check
+import { assert } from '@agoric/assert';
 import { createHash } from 'crypto';
 import { pipeline } from 'stream';
 
@@ -41,12 +42,13 @@ export function asPromise(calling) {
  *   createReadStream: typeof import('fs').createReadStream,
  *   createWriteStream: typeof import('fs').createWriteStream,
  *   resolve: typeof import('path').resolve,
+ *   rename: typeof import('fs').promises.rename,
  *   unlink: typeof import('fs').promises.unlink,
  * }} io
  */
 export function makeSnapstore(
   root,
-  { tmpName, createReadStream, createWriteStream, resolve, unlink },
+  { tmpName, createReadStream, createWriteStream, resolve, rename, unlink },
 ) {
   /**
    * @param { (name: string) => Promise<T> } thunk
@@ -63,6 +65,25 @@ export function makeSnapstore(
     }
     return result;
   }
+
+  /**
+   * @param {string} dest
+   * @param { (name: string) => Promise<T> } thunk
+   * @returns { Promise<T> }
+   * @template T
+   */
+  async function atomicWrite(dest, thunk) {
+    const tmp = await asPromise(cb => tmpName({ tmpdir: root }, cb));
+    const result = await thunk(tmp);
+    await rename(tmp, resolve(root, dest));
+    try {
+      await unlink(tmp);
+    } catch (ignore) {
+      // ignore
+    }
+    return result;
+  }
+
   /** @type {(input: string, f: NodeJS.ReadWriteStream, output: string) => Promise<void>} */
   async function filter(input, f, output) {
     const source = createReadStream(input);
@@ -84,5 +105,5 @@ export function makeSnapstore(
 
   /** @type {(ref: string) => string} */
   const r = ref => resolve(root, ref);
-  return freeze({ withTempName, filter, hash, resolve: r });
+  return freeze({ withTempName, atomicWrite, filter, hash, resolve: r });
 }

@@ -39,8 +39,24 @@ async function bootWorker(name, handleCommand) {
   return worker;
 }
 
+/**
+ *
+ * @param {ReturnType<typeof xsnap>} xs
+ * @param {ReturnType<typeof makeSnapstore>} store
+ */
+async function saveSnap(xs, store) {
+  await store.withTempName(async snapFile => {
+    await xs.snapshot(snapFile);
+    const h = await store.hash(snapFile);
+    if (fs.existsSync(`${h}.gz`)) return;
+    await store.atomicWrite(`${h}.gz`, async gztmp => {
+      await store.filter(snapFile, createGzip(), gztmp);
+    });
+  });
+}
+
 test('build temp file; compress to cache file', async t => {
-  const pool = path.resolve(__dirname, './fixture-snap-pool-1/');
+  const pool = path.resolve(__dirname, './fixture-snap-pool/');
   await fs.promises.mkdir(pool, { recursive: true });
   const store = makeSnapstore(pool, {
     ...tmp,
@@ -75,7 +91,7 @@ test('bootstrap, save, compress', async t => {
   const vat = await bootWorker('test', async _ => empty);
   t.teardown(() => vat.close());
 
-  const pool = path.resolve(__dirname, './fixture-snap-pool-2/');
+  const pool = path.resolve(__dirname, './fixture-snap-pool/');
   await fs.promises.mkdir(pool, { recursive: true });
 
   const store = makeSnapstore(pool, {
@@ -111,8 +127,11 @@ test('bootstrap, save, compress', async t => {
       'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
       'snapshots (and their SHA-512 hashes) are deterministic',
     );
+
     zfile = store.resolve(`${h}.gz`);
-    await store.filter(snapFile, createGzip(), zfile);
+    await store.atomicWrite(zfile, async ztmp => {
+      await store.filter(snapFile, createGzip(), ztmp);
+    });
   });
   t.is(Kb(zfile), snapSize.compressed, 'compressed snapshots are smaller');
 });
@@ -131,12 +150,7 @@ test('uncompress, restore, resume', async t => {
   const vat0 = await bootWorker('test', async _ => empty);
   t.teardown(() => vat0.close());
   await vat0.evaluate('globalThis.x = harden({a: 1})');
-  await store.withTempName(async snapFile => {
-    await vat0.snapshot(snapFile);
-    const h = await store.hash(snapFile);
-    const zfile = store.resolve(`${h}.gz`);
-    await store.filter(snapFile, createGzip(), zfile);
-  });
+  await saveSnap(vat0, store);
 
   const h = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
   const worker = await store.withTempName(async raw => {
