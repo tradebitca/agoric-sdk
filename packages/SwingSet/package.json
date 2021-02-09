@@ -27,6 +27,7 @@
   },
   "devDependencies": {
     "@agoric/install-metering-and-ses": "^0.2.0",
+    "@types/tmp": "^0.2.0",
     "ava": "^3.12.1",
     "nyc": "^15.1.0"
   },
