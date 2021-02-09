@@ -55,9 +55,16 @@ export function buildRootObject(vatPowers, vatParameters) {
 
   // crank 5: dispatch.notify(pF, false, ['data', callbackObj])
 
+  const contents = [];
+  function append(thing) {
+    contents.push(thing);
+    return harden([...contents]);
+  }
+
   const target = harden({
     zero,
     one,
+    append,
   });
 
   return target;

@@ -43,7 +43,7 @@ function makeConsole(tag) {
   return harden(cons);
 }
 
-function makeStartXSnap(bundles, { env }) {
+export function makeStartXSnap(bundles, { env }) {
   const xsnapOpts = {
     os: osType(),
     spawn,
