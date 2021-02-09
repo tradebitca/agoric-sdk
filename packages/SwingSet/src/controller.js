@@ -1,4 +1,5 @@
 import fs from 'fs';
+import path from 'path';
 import process from 'process';
 import re2 from 're2';
 import { spawn } from 'child_process';
@@ -8,8 +9,9 @@ import * as babelCore from '@babel/core';
 import * as babelParser from '@agoric/babel-parser';
 import babelGenerate from '@babel/generator';
 import anylogger from 'anylogger';
+import { tmpName } from 'tmp';
 
-import { assert } from '@agoric/assert';
+import { assert, details as d } from '@agoric/assert';
 import { isTamed, tameMetering } from '@agoric/tame-metering';
 import { importBundle } from '@agoric/import-bundle';
 import { initSwingStore } from '@agoric/swing-store-simple';
@@ -27,6 +29,10 @@ import {
   swingsetIsInitialized,
   initializeSwingset,
 } from './initializeSwingset';
+import {
+  makeSnapstore,
+  defaultSnapstorePath,
+} from './kernel/vatManager/snapStore';
 
 function makeConsole(tag) {
   const log = anylogger(tag);
@@ -35,6 +41,51 @@ function makeConsole(tag) {
     cons[level] = log[level];
   }
   return harden(cons);
+}
+
+function makeStartXSnap(bundles, { env }) {
+  const xsnapOpts = {
+    os: osType(),
+    spawn,
+    stdout: 'inherit',
+    stderr: 'inherit',
+    debug: !!env.XSNAP_DEBUG,
+  };
+
+  const pool = defaultSnapstorePath({ env });
+  fs.mkdirSync(pool, { recursive: true });
+
+  const snapStore = makeSnapstore(pool, {
+    tmpName,
+    existsSync: fs.existsSync,
+    createReadStream: fs.createReadStream,
+    createWriteStream: fs.createWriteStream,
+    rename: fs.promises.rename,
+    unlink: fs.promises.unlink,
+    resolve: path.resolve,
+  });
+
+  let supervisorHash = '';
+  return async function startXSnap(name, handleCommand) {
+    if (supervisorHash) {
+      return snapStore.load(supervisorHash, async snapshot => {
+        const xs = xsnap({ snapshot, name, handleCommand, ...xsnapOpts });
+        await xs.evaluate('null'); // ensure that spawn is done
+        return xs;
+      });
+    }
+    const worker = xsnap({ handleCommand, name, ...xsnapOpts });
+
+    for await (const [it, superCode] of Object.entries(bundles)) {
+      assert(
+        superCode.moduleFormat === 'getExport',
+        d`${it} unexpected: ${superCode.moduleFormat}`,
+      );
+      await worker.evaluate(`(${superCode.source}\n)()`.trim());
+    }
+    supervisorHash = await snapStore.save(async fn => worker.snapshot(fn));
+    return worker;
+  };
 }
 
 export async function makeSwingsetController(
@@ -162,23 +213,11 @@ export async function makeSwingsetController(
     return startSubprocessWorker(process.execPath, ['-r', 'esm', supercode]);
   }
 
-  const startXSnap = (name, handleCommand) => {
-    const worker = xsnap({
-      os: osType(),
-      spawn,
-      handleCommand,
-      name,
-      stdout: 'inherit',
-      stderr: 'inherit',
-      debug: !!env.XSNAP_DEBUG,
-    });
-
-    const bundles = {
-      lockdown: JSON.parse(hostStorage.get('lockdownBundle')),
-      supervisor: JSON.parse(hostStorage.get('supervisorBundle')),
-    };
-    return harden({ worker, bundles });
+  const bundles = {
+    lockdown: JSON.parse(hostStorage.get('lockdownBundle')),
+    supervisor: JSON.parse(hostStorage.get('supervisorBundle')),
   };
+  const startXSnap = makeStartXSnap(bundles, { env });
 
   const slogF =
     slogFile && (await fs.createWriteStream(slogFile, { flags: 'a' })); // append

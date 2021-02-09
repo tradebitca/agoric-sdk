@@ -122,9 +122,11 @@ test('create, save, restore, resume', async t => {
   const h = await store.save(vat0.snapshot);
 
   t.is(h, 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855');
-  const worker = await store.load(h, async snapshot =>
-    xsnap({ snapshot, os: osType(), spawn }),
-  );
+  const worker = await store.load(h, async snapshot => {
+    const xs = xsnap({ snapshot, os: osType(), spawn });
+    await xs.evaluate('0');
+    return xs;
+  });
   t.teardown(() => worker.close());
   await worker.evaluate('x.a');
   t.pass();
