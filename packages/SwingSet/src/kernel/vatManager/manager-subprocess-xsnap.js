@@ -1,5 +1,5 @@
 // @ts-check
-import { assert, details } from '@agoric/assert';
+import { assert } from '@agoric/assert';
 import { makeTranscriptManager } from './transcript';
 import { createSyscall } from './syscall';
 
