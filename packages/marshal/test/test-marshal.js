@@ -64,30 +64,6 @@ test('serialize static data', t => {
     });
   }
 
-  let emptyem;
-  try {
-    throw new Error();
-  } catch (e) {
-    emptyem = harden(e);
-  }
-  t.deepEqual(ser(emptyem), {
-    body:
-      '{"@qclass":"error","errorId":"error:anon-marshal#1","message":"","name":"Error"}',
-    slots: [],
-  });
-
-  let em;
-  try {
-    throw new ReferenceError('msg');
-  } catch (e) {
-    em = harden(e);
-  }
-  t.deepEqual(ser(em), {
-    body:
-      '{"@qclass":"error","errorId":"error:anon-marshal#2","message":"msg","name":"ReferenceError"}',
-    slots: [],
-  });
-
   const cd = ser(harden([1, 2]));
   t.is(Object.isFrozen(cd), true);
   t.is(Object.isFrozen(cd.slots), true);
@@ -121,21 +97,6 @@ test('unserialize static data', t => {
   if (bn) {
     t.deepEqual(uns('{"@qclass":"bigint","digits":"1234"}'), 1234n);
   }
-
-  const em1 = uns(
-    '{"@qclass":"error","message":"msg","name":"ReferenceError"}',
-  );
-  t.truthy(em1 instanceof ReferenceError);
-  t.is(em1.message, 'msg');
-  t.truthy(Object.isFrozen(em1));
-
-  const em2 = uns('{"@qclass":"error","message":"msg2","name":"TypeError"}');
-  t.truthy(em2 instanceof TypeError);
-  t.is(em2.message, 'msg2');
-
-  const em3 = uns('{"@qclass":"error","message":"msg3","name":"Unknown"}');
-  t.truthy(em3 instanceof Error);
-  t.is(em3.message, 'msg3');
 
   t.deepEqual(uns('[1,2]'), [1, 2]);
   t.deepEqual(uns('{"a":1,"b":2}'), { a: 1, b: 2 });
