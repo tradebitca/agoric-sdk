@@ -14,24 +14,14 @@ test('serialize errors', t => {
   const m = makeMarshal();
   const ser = val => m.serialize(val);
 
-  let emptyem;
-  try {
-    throw new Error();
-  } catch (e) {
-    emptyem = harden(e);
-  }
+  const emptyem = harden(Error());
   t.deepEqual(ser(emptyem), {
     body:
       '{"@qclass":"error","errorId":"error:anon-marshal#1","message":"","name":"Error"}',
     slots: [],
   });
 
-  let em;
-  try {
-    throw new ReferenceError('msg');
-  } catch (e) {
-    em = harden(e);
-  }
+  const em = harden(ReferenceError('msg'));
   t.deepEqual(ser(em), {
     body:
       '{"@qclass":"error","errorId":"error:anon-marshal#2","message":"msg","name":"ReferenceError"}',
