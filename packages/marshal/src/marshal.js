@@ -201,7 +201,10 @@ function isPassByCopyError(val) {
       );
     }
     if (mDesc.enumerable) {
-      assert.note(val, X`Error message property ${mDesc} not be enumerable`);
+      assert.note(
+        val,
+        X`Error message property ${mDesc} must not be enumerable`,
+      );
     }
   }
   return true;

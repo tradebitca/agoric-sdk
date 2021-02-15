@@ -1,12 +1,6 @@
 import '@agoric/install-ses';
 import test from 'ava';
-import {
-  Remotable,
-  Far,
-  getInterfaceOf,
-  makeMarshal,
-  passStyleOf,
-} from '../src/marshal';
+import { makeMarshal } from '../src/marshal';
 
 // this only includes the tests that do not use liveSlots
 
