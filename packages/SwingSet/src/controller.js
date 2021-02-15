@@ -79,7 +79,7 @@ function makeStartXSnap(bundles, { env }) {
     for await (const [it, superCode] of Object.entries(bundles)) {
       assert(
         superCode.moduleFormat === 'getExport',
-        d`${it} unexpected: ${superCode.moduleFormat}`,
+        X`${it} unexpected: ${superCode.moduleFormat}`,
       );
       await worker.evaluate(`(${superCode.source}\n)()`.trim());
     }
