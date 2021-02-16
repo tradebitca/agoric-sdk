@@ -76,12 +76,12 @@ function makeStartXSnap(bundles, { env }) {
     }
     const worker = xsnap({ handleCommand, name, ...xsnapOpts });
 
-    for await (const [it, superCode] of Object.entries(bundles)) {
+    for await (const bundle of bundles) {
       assert(
-        superCode.moduleFormat === 'getExport',
-        X`${it} unexpected: ${superCode.moduleFormat}`,
+        bundle.moduleFormat === 'getExport',
+        X`unexpected: ${bundle.moduleFormat}`,
       );
-      await worker.evaluate(`(${superCode.source}\n)()`.trim());
+      await worker.evaluate(`(${bundle.source}\n)()`.trim());
     }
     supervisorHash = await snapStore.save(async fn => worker.snapshot(fn));
     return worker;
@@ -213,10 +213,10 @@ export async function makeSwingsetController(
     return startSubprocessWorker(process.execPath, ['-r', 'esm', supercode]);
   }
 
-  const bundles = {
-    lockdown: JSON.parse(hostStorage.get('lockdownBundle')),
-    supervisor: JSON.parse(hostStorage.get('supervisorBundle')),
-  };
+  const bundles = [
+    JSON.parse(hostStorage.get('lockdownBundle')),
+    JSON.parse(hostStorage.get('supervisorBundle')),
+  ];
   const startXSnap = makeStartXSnap(bundles, { env });
 
   const slogF =
