@@ -43,11 +43,15 @@ export function makeSnapstore(
    */
   async function withTempName(thunk) {
     const name = await ptmpName(tmpOpts);
-    const result = await thunk(name);
+    let result;
     try {
-      await unlink(name);
-    } catch (ignore) {
-      // ignore
+      result = await thunk(name);
+    } finally {
+      try {
+        await unlink(name);
+      } catch (ignore) {
+        // ignore
+      }
     }
     return result;
   }
@@ -60,12 +64,16 @@ export function makeSnapstore(
    */
   async function atomicWrite(dest, thunk) {
     const tmp = await ptmpName(tmpOpts);
-    const result = await thunk(tmp);
-    await rename(tmp, resolve(root, dest));
+    let result;
     try {
-      await unlink(tmp);
-    } catch (ignore) {
-      // ignore
+      result = await thunk(tmp);
+      await rename(tmp, resolve(root, dest));
+    } finally {
+      try {
+        await unlink(tmp);
+      } catch (ignore) {
+        // ignore
+      }
     }
     return result;
   }
