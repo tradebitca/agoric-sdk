@@ -18,11 +18,11 @@ import { makeNotifierKit } from '@agoric/notifier';
 export default function buildManualTimer(log, startValue = 0) {
   let ticks = startValue;
 
-  /** @type {Store<Timestamp, Array<TimerWaker>>} */
+  /** @type {Store<Timestamp, Array<ERef<TimerWaker>>>} */
   const schedule = makeStore('Timestamp');
 
   const makeRepeater = (delaySecs, interval, timer) => {
-    /** @type {Array<TimerWaker> | null} */
+    /** @type {Array<ERef<TimerWaker>> | null} */
     let wakers = [];
     let nextWakeup;
 
