@@ -87,8 +87,8 @@ test('bootstrap, save, compress', async t => {
   const Kb = fn => Math.round(fs.statSync(fn).size / 1024);
 
   const snapSize = {
-    raw: 1096,
-    compressed: 195,
+    raw: 1114,
+    compressed: 199,
   };
 
   const h = await store.save(async snapFile => {
