@@ -1015,8 +1015,14 @@ void fxAbort(txMachine* the, int status)
 #endif
 		fxExitToHost(the);
 		break;
-	case XS_UNHANDLED_EXCEPTION_EXIT:
 	case XS_UNHANDLED_REJECTION_EXIT:
+		xsLog("unhandled rejection\n");
+#ifdef mxDebug
+		fxDebugger(the, (char *)__FILE__, __LINE__);
+#endif
+		fxExitToHost(the);
+		break;
+	case XS_UNHANDLED_EXCEPTION_EXIT:
 		xsLog("%s\n", xsToString(xsException));
 		xsException = xsUndefined;
 		break;

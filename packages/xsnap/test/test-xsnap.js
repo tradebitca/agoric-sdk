@@ -105,7 +105,7 @@ test('evaluate error', async t => {
   await vat.terminate();
 });
 
-test.failing('uncaught rejections should not be silent', async t => {
+test('uncaught rejections should not be silent', async t => {
   const opts = options();
   const vat = xsnap(opts);
   await vat
