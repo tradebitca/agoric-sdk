@@ -127,9 +127,3 @@ export function makeSnapstore(
 
   return freeze({ load, save });
 }
-
-export function defaultSnapstorePath({ env = process.env }) {
-  // ISSUE: Windows paths?
-  const cache = env.XDG_CACHE_HOME || `${env.HOME}/.cache`;
-  return `${cache}/agoric-xs-snapshots/`;
-}

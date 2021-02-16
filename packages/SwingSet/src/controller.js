@@ -29,10 +29,7 @@ import {
   swingsetIsInitialized,
   initializeSwingset,
 } from './initializeSwingset';
-import {
-  makeSnapstore,
-  defaultSnapstorePath,
-} from './kernel/vatManager/snapStore';
+import { makeSnapstore } from './kernel/vatManager/snapStore';
 
 function makeConsole(tag) {
   const log = anylogger(tag);
@@ -43,7 +40,7 @@ function makeConsole(tag) {
   return harden(cons);
 }
 
-function makeStartXSnap(bundles, { env }) {
+function makeStartXSnap(bundles, { snapstorePath, env }) {
   const xsnapOpts = {
     os: osType(),
     spawn,
@@ -52,18 +49,21 @@ function makeStartXSnap(bundles, { env }) {
     debug: !!env.XSNAP_DEBUG,
   };
 
-  const pool = defaultSnapstorePath({ env });
-  fs.mkdirSync(pool, { recursive: true });
+  let snapStore;
 
-  const snapStore = makeSnapstore(pool, {
-    tmpName,
-    existsSync: fs.existsSync,
-    createReadStream: fs.createReadStream,
-    createWriteStream: fs.createWriteStream,
-    rename: fs.promises.rename,
-    unlink: fs.promises.unlink,
-    resolve: path.resolve,
-  });
+  if (snapstorePath) {
+    fs.mkdirSync(snapstorePath, { recursive: true });
+
+    snapStore = makeSnapstore(snapstorePath, {
+      tmpName,
+      existsSync: fs.existsSync,
+      createReadStream: fs.createReadStream,
+      createWriteStream: fs.createWriteStream,
+      rename: fs.promises.rename,
+      unlink: fs.promises.unlink,
+      resolve: path.resolve,
+    });
+  }
 
   let supervisorHash = '';
   return async function startXSnap(name, handleCommand) {
@@ -83,7 +83,9 @@ function makeStartXSnap(bundles, { env }) {
       );
       await worker.evaluate(`(${bundle.source}\n)()`.trim());
     }
-    supervisorHash = await snapStore.save(async fn => worker.snapshot(fn));
+    if (snapStore) {
+      supervisorHash = await snapStore.save(async fn => worker.snapshot(fn));
+    }
     return worker;
   };
 }
@@ -105,6 +107,7 @@ export async function makeSwingsetController(
     slogFile,
     testTrackDecref,
     defaultManagerType = env.WORKER_TYPE || 'local',
+    snapstorePath,
   } = runtimeOptions;
   if (typeof Compartment === 'undefined') {
     throw Error('SES must be installed before calling makeSwingsetController');
@@ -217,7 +220,7 @@ export async function makeSwingsetController(
     JSON.parse(hostStorage.get('lockdownBundle')),
     JSON.parse(hostStorage.get('supervisorBundle')),
   ];
-  const startXSnap = makeStartXSnap(bundles, { env });
+  const startXSnap = makeStartXSnap(bundles, { snapstorePath, env });
 
   const slogF =
     slogFile && (await fs.createWriteStream(slogFile, { flags: 'a' })); // append
@@ -342,12 +345,14 @@ export async function buildVatController(
     debugPrefix,
     testTrackDecref,
     defaultManagerType,
+    snapstorePath,
   } = runtimeOptions;
   const actualRuntimeOptions = {
     verbose,
     debugPrefix,
     testTrackDecref,
     defaultManagerType,
+    snapstorePath,
   };
   const initializationOptions = { verbose, kernelBundles };
   let bootstrapResult;
