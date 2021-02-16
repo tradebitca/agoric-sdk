@@ -29,7 +29,7 @@ import {
   swingsetIsInitialized,
   initializeSwingset,
 } from './initializeSwingset';
-import { makeSnapstore } from './kernel/vatManager/snapStore';
+import { makeSnapstore } from '@agoric/xsnap';
 
 function makeConsole(tag) {
   const log = anylogger(tag);

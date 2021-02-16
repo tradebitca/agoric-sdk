@@ -8,11 +8,16 @@ import path from 'path';
 
 import test from 'ava';
 import tmp from 'tmp';
-import { xsnap } from '@agoric/xsnap';
-import bundleSource from '@agoric/bundle-source';
-import { makeSnapstore } from '../../src/kernel/vatManager/snapStore';
+import { xsnap } from '../src/xsnap';
+import { makeSnapstore } from '../src/snapStore';
 
-const empty = new Uint8Array();
+const importModuleUrl = `file://${__filename}`;
+
+const asset = async (...segments) =>
+  fs.promises.readFile(
+    path.join(importModuleUrl.replace('file:/', ''), '..', ...segments),
+    'utf-8',
+  );
 
 /**
  * @param {string} name
@@ -29,12 +34,8 @@ async function bootWorker(name, handleCommand) {
     // debug: !!env.XSNAP_DEBUG,
   });
 
-  const load = async rel => {
-    const b = await bundleSource(require.resolve(rel), 'getExport');
-    await worker.evaluate(`(${b.source}\n)()`.trim());
-  };
-  await load('../../src/kernel/vatManager/lockdown-subprocess-xsnap.js');
-  await load('../../src/kernel/vatManager/supervisor-subprocess-xsnap.js');
+  const bootScript = await asset('..', 'dist', 'bootstrap.umd.js');
+  await worker.evaluate(bootScript);
   return worker;
 }
 
@@ -54,8 +55,8 @@ test('build temp file; compress to cache file', async t => {
     keepTmp = fn;
   });
   t.is(
+    'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
     hash,
-    'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
   );
   t.falsy(
     fs.existsSync(keepTmp),
@@ -68,7 +69,7 @@ test('build temp file; compress to cache file', async t => {
 });
 
 test('bootstrap, save, compress', async t => {
-  const vat = await bootWorker('test', async _ => empty);
+  const vat = await bootWorker('test', async m => m);
   t.teardown(() => vat.close());
 
   const pool = path.resolve(__dirname, './fixture-snap-pool/');
@@ -87,19 +88,14 @@ test('bootstrap, save, compress', async t => {
   const Kb = fn => Math.round(fs.statSync(fn).size / 1024);
 
   const snapSize = {
-    raw: 1114,
-    compressed: 199,
+    raw: 732,
+    compressed: 100,
   };
 
   const h = await store.save(async snapFile => {
     await vat.snapshot(snapFile);
-    t.is(Kb(snapFile), snapSize.raw, 'raw snapshots are large-ish');
+    t.is(snapSize.raw, Kb(snapFile), 'raw snapshots are large-ish');
   });
-  t.is(
-    h,
-    'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
-    'snapshots (and their SHA-256 hashes) are deterministic',
-  );
 
   const zfile = path.resolve(pool, `${h}.gz`);
   t.truthy(
@@ -119,12 +115,11 @@ test('create, save, restore, resume', async t => {
     ...fs.promises,
   });
 
-  const vat0 = await bootWorker('test', async _ => empty);
+  const vat0 = await bootWorker('test', async m => m);
   t.teardown(() => vat0.close());
   await vat0.evaluate('globalThis.x = harden({a: 1})');
   const h = await store.save(vat0.snapshot);
 
-  t.is(h, 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855');
   const worker = await store.load(h, async snapshot => {
     const xs = xsnap({ snapshot, os: osType(), spawn });
     await xs.evaluate('0');
@@ -133,4 +128,10 @@ test('create, save, restore, resume', async t => {
   t.teardown(() => worker.close());
   await worker.evaluate('x.a');
   t.pass();
+});
+
+// see https://github.com/Moddable-OpenSource/moddable/issues/564
+test.failing('xs snapshots should be deterministic', t => {
+  const h = 'abc';
+  t.is('66244b4bfe92ae9138d24a9b50b492d231f6a346db0cf63543d200860b423724', h);
 });

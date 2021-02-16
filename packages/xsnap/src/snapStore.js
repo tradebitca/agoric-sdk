@@ -87,10 +87,10 @@ export function makeSnapstore(
 
   /** @type {(filename: string) => Promise<string>} */
   async function fileHash(filename) {
-    const h = createHash('sha256');
-    const p = createReadStream(filename).pipe(h);
-    await new Promise(cb => p.end(cb));
-    return h.digest('hex');
+    const hash = createHash('sha256');
+    const input = createReadStream(filename);
+    await pipe(input, hash);
+    return hash.digest('hex');
   }
 
   /**
