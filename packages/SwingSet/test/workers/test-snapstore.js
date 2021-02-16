@@ -98,7 +98,7 @@ test('bootstrap, save, compress', async t => {
   t.is(
     h,
     'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
-    'snapshots (and their SHA-512 hashes) are deterministic',
+    'snapshots (and their SHA-256 hashes) are deterministic',
   );
 
   const zfile = path.resolve(pool, `${h}.gz`);
