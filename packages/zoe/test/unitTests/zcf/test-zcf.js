@@ -303,7 +303,7 @@ test(`zcf.makeInvitation - no customProperties`, async t => {
   // https://github.com/Agoric/agoric-sdk/issues/1705
   // @ts-ignore
   const details = await E(zoe).getInvitationDetails(invitationP);
-  assertAmountsEqual(t, details, {
+  t.deepEqual(details, {
     description: 'myInvitation',
     handle: details.handle,
     installation,
