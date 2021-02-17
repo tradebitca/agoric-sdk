@@ -8,6 +8,7 @@ import { E } from '@agoric/eventual-send';
 
 import { setup } from '../setupBasicMints';
 import { setupNonFungible } from '../setupNonFungibleMints';
+import { assertAmountsEqual } from '../../zoeTestHelpers';
 
 const atomicSwapRoot = `${__dirname}/../../../src/contracts/atomicSwap`;
 
@@ -423,7 +424,11 @@ test('zoe - atomicSwap like-for-like', async t => {
   );
 
   // Alice didn't get any of what Alice put in
-  t.deepEqual(await moolaIssuer.getAmountOf(aliceAssetPayout), moola(0));
+  assertAmountsEqual(
+    t,
+    await moolaIssuer.getAmountOf(aliceAssetPayout),
+    moola(0),
+  );
 
   // Alice deposits her payout to ensure she can
   const aliceAssetAmount = await aliceMoolaPurse.deposit(aliceAssetPayout);

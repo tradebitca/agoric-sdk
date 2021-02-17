@@ -11,6 +11,7 @@ import { setup } from '../../setupBasicMints';
 
 import { setupZCFTest } from '../../zcf/setupZcfTest';
 import { makePercent } from '../../../../src/contractSupport/percentMath';
+import { assertAmountsEqual } from '../../../zoeTestHelpers';
 
 /**
  * @param {import("ava").ExecutionContext<unknown>} t
@@ -77,7 +78,7 @@ export const checkPayouts = async (
     const kit = kitKeywordRecord[keyword];
     const amount = await kit.issuer.getAmountOf(paymentP);
     const expected = expectedKeywordRecord[keyword];
-    t.deepEqual(amount, expected);
+    assertAmountsEqual(t, amount, expected);
     t.truthy(
       kit.amountMath.isEqual(amount, expected),
       `amount value: ${amount.value}, expected value: ${expected.value}, message: ${message}`,

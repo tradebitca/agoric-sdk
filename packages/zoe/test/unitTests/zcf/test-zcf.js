@@ -11,6 +11,7 @@ import { setup } from '../setupBasicMints';
 import buildManualTimer from '../../../tools/manualTimer';
 
 import { setupZCFTest } from './setupZcfTest';
+import { assertAmountsEqual } from '../../zoeTestHelpers';
 
 test(`zcf.getZoeService`, async t => {
   const { zoe, zcf } = await setupZCFTest();
@@ -44,7 +45,7 @@ const testTerms = async (t, zcf, expected) => {
   const zcfTerms = zcf.getTerms();
   const zcfTermsMinusAmountMath = { ...zcfTerms, maths: {} };
   const expectedMinusAmountMath = { ...expected, maths: {} };
-  t.deepEqual(zcfTermsMinusAmountMath, expectedMinusAmountMath);
+  assertAmountsEqual(t, zcfTermsMinusAmountMath, expectedMinusAmountMath);
 
   compareAmountMaths(t, zcfTerms.maths, expected.maths);
 };
@@ -201,7 +202,7 @@ test(`zcf.saveIssuer & zoe.getTerms`, async t => {
   const zoeTerms = await E(zoe).getTerms(instance);
   const zoeTermsMinusAmountMath = { ...zoeTerms, maths: {} };
   const expectedMinusAmountMath = { ...expected, maths: {} };
-  t.deepEqual(zoeTermsMinusAmountMath, expectedMinusAmountMath);
+  assertAmountsEqual(t, zoeTermsMinusAmountMath, expectedMinusAmountMath);
 
   compareAmountMaths(t, zoeTerms.maths, expected.maths);
 });
@@ -302,7 +303,7 @@ test(`zcf.makeInvitation - no customProperties`, async t => {
   // https://github.com/Agoric/agoric-sdk/issues/1705
   // @ts-ignore
   const details = await E(zoe).getInvitationDetails(invitationP);
-  t.deepEqual(details, {
+  assertAmountsEqual(t, details, {
     description: 'myInvitation',
     handle: details.handle,
     installation,
@@ -321,7 +322,7 @@ test(`zcf.makeInvitation - customProperties`, async t => {
   // https://github.com/Agoric/agoric-sdk/issues/1705
   // @ts-ignore
   const details = await E(zoe).getInvitationDetails(invitationP);
-  t.deepEqual(details, {
+  assertAmountsEqual(t, details, {
     description: 'myInvitation',
     handle: details.handle,
     installation,
@@ -342,7 +343,7 @@ test(`zcf.makeInvitation - customProperties overwritten`, async t => {
   // https://github.com/Agoric/agoric-sdk/issues/1705
   // @ts-ignore
   const details = await E(zoe).getInvitationDetails(invitationP);
-  t.deepEqual(details, {
+  assertAmountsEqual(t, details, {
     description: 'myInvitation',
     handle: details.handle,
     installation,
@@ -437,7 +438,11 @@ test(`zcf.makeZCFMint - mintGains - no seat`, async t => {
   const { amountMath, brand } = zcfMint.getIssuerRecord();
   const zcfSeat = zcfMint.mintGains({ A: amountMath.make(4) });
   t.truthy(zcfSeat);
-  t.deepEqual(zcfSeat.getAmountAllocated('A', brand), amountMath.make(4));
+  assertAmountsEqual(
+    t,
+    zcfSeat.getAmountAllocated('A', brand),
+    amountMath.make(4),
+  );
 });
 
 test(`zcf.makeZCFMint - mintGains - no gains`, async t => {
@@ -501,7 +506,11 @@ test(`zcf.makeZCFMint - mintGains - right issuer`, async t => {
   const { zcfSeat } = zcf.makeEmptySeatKit();
   const zcfSeat2 = zcfMint.mintGains({ A: amountMath.make(4) }, zcfSeat);
   t.is(zcfSeat2, zcfSeat);
-  t.deepEqual(zcfSeat.getAmountAllocated('A', brand), amountMath.make(4));
+  assertAmountsEqual(
+    t,
+    zcfSeat.getAmountAllocated('A', brand),
+    amountMath.make(4),
+  );
 });
 
 test(`zcf.makeZCFMint - burnLosses - right issuer`, async t => {
@@ -512,12 +521,20 @@ test(`zcf.makeZCFMint - burnLosses - right issuer`, async t => {
   const { zcfSeat } = zcf.makeEmptySeatKit();
   const zcfSeat2 = zcfMint.mintGains({ A: amountMath.make(4) }, zcfSeat);
   t.is(zcfSeat2, zcfSeat);
-  t.deepEqual(zcfSeat.getAmountAllocated('A', brand), amountMath.make(4));
+  assertAmountsEqual(
+    t,
+    zcfSeat.getAmountAllocated('A', brand),
+    amountMath.make(4),
+  );
   // TODO: return a seat?
   // https://github.com/Agoric/agoric-sdk/issues/1709
   const result = zcfMint.burnLosses({ A: amountMath.make(1) }, zcfSeat);
   t.is(result, undefined);
-  t.deepEqual(zcfSeat.getAmountAllocated('A', brand), amountMath.make(3));
+  assertAmountsEqual(
+    t,
+    zcfSeat.getAmountAllocated('A', brand),
+    amountMath.make(3),
+  );
 });
 
 test(`zcf.makeZCFMint - mintGains - seat exited`, async t => {
@@ -538,7 +555,11 @@ test(`zcf.makeZCFMint - burnLosses - seat exited`, async t => {
   const { zcfSeat } = zcf.makeEmptySeatKit();
   const zcfSeat2 = zcfMint.mintGains({ A: amountMath.make(4) }, zcfSeat);
   t.is(zcfSeat2, zcfSeat);
-  t.deepEqual(zcfSeat.getAmountAllocated('A', brand), amountMath.make(4));
+  assertAmountsEqual(
+    t,
+    zcfSeat.getAmountAllocated('A', brand),
+    amountMath.make(4),
+  );
   zcfSeat.exit();
   t.throws(() => zcfMint.burnLosses({ A: amountMath.make(1) }, zcfSeat), {
     message: `seat has been exited`,
@@ -805,7 +826,7 @@ test(`zcfSeat.getAmountAllocated from zcf.makeEmptySeatKit`, async t => {
   // Mint some gains to change the allocation.
   const { brand: brand1 } = await allocateEasy(zcf, 'Stuff', zcfSeat, 'A', 3);
 
-  t.deepEqual(zcfSeat.getAmountAllocated('A', brand1), {
+  assertAmountsEqual(t, zcfSeat.getAmountAllocated('A', brand1), {
     brand: brand1,
     value: 3,
   });
@@ -813,12 +834,12 @@ test(`zcfSeat.getAmountAllocated from zcf.makeEmptySeatKit`, async t => {
   // Again, mint some gains to change the allocation.
   const { brand: brand2 } = await allocateEasy(zcf, 'Stuff2', zcfSeat, 'B', 6);
 
-  t.deepEqual(zcfSeat.getAmountAllocated('B'), {
+  assertAmountsEqual(t, zcfSeat.getAmountAllocated('B'), {
     brand: brand2,
     value: 6,
   });
 
-  t.deepEqual(zcfSeat.getAmountAllocated('B', brand2), {
+  assertAmountsEqual(t, zcfSeat.getAmountAllocated('B', brand2), {
     brand: brand2,
     value: 6,
   });
@@ -1054,11 +1075,11 @@ test(`userSeat.getPayouts, getPayout from zcf.makeEmptySeatKit`, async t => {
   t.deepEqual(await payoutPs.A, await payoutAP);
   t.deepEqual(await payoutPs.B, await payoutBP);
 
-  t.deepEqual(await E(issuer1).getAmountOf(payoutAP), {
+  assertAmountsEqual(t, await E(issuer1).getAmountOf(payoutAP), {
     brand: brand1,
     value: 3,
   });
-  t.deepEqual(await E(issuer2).getAmountOf(payoutBP), {
+  assertAmountsEqual(t, await E(issuer2).getAmountOf(payoutBP), {
     brand: brand2,
     value: 6,
   });

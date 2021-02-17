@@ -269,6 +269,6 @@ test('strSetMathHelpers', t => {
       harden({ brand: mockBrand, value: ['a'] }),
     ),
     harden({ brand: mockBrand, value: ['b'] }),
-    `['a', 'b'] - ['a'] = ['a']`,
+    `['a', 'b'] - ['a'] = ['b']`,
   );
 });
