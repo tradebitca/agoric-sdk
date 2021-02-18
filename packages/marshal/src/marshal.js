@@ -26,24 +26,6 @@ export const REMOTE_STYLE = 'presence';
 
 const PASS_STYLE = Symbol.for('passStyle');
 
-/** @type {MarshalGetInterfaceOf} */
-export function getInterfaceOf(val) {
-  if (typeof val !== 'object' || val === null) {
-    return undefined;
-  }
-  if (val[PASS_STYLE] !== REMOTE_STYLE) {
-    return undefined;
-  }
-  assert(isFrozen(val), X`Remotable ${val} must be frozen`, TypeError);
-  const iface = val[Symbol.toStringTag];
-  assert.typeof(
-    iface,
-    'string',
-    X`Remotable interface currently can only be a string`,
-  );
-  return iface;
-}
-
 /**
  * Do a deep copy of the object, handling Proxies and recursion.
  * The resulting copy is guaranteed to be pure data, as well as hardened.
@@ -376,6 +358,20 @@ function assertRemotable(val) {
     assertRemotableProto(p);
   }
 }
+
+/** @type {MarshalGetInterfaceOf} */
+const getInterfaceOf = val => {
+  if (typeof val !== 'object' || val === null) {
+    return undefined;
+  }
+  if (val[PASS_STYLE] !== REMOTE_STYLE) {
+    return undefined;
+  }
+  assertRemotable(val);
+  return val[Symbol.toStringTag];
+};
+harden(getInterfaceOf);
+export { getInterfaceOf };
 
 /**
  * This is the equality comparison used by JavaScript's Map and Set
