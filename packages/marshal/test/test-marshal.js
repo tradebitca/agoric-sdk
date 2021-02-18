@@ -7,6 +7,7 @@ import {
   getInterfaceOf,
   makeMarshal,
   passStyleOf,
+  REMOTE_STYLE,
 } from '../src/marshal';
 
 // this only includes the tests that do not use liveSlots
@@ -247,6 +248,65 @@ test('Remotable/getInterfaceOf', t => {
       index: 0,
     }),
     slots: ['slot'],
+  });
+});
+
+const GOOD_PASS_STYLE = Symbol.for('passStyle');
+const BAD_PASS_STYLE = Symbol('passStyle');
+
+const goodRemotableProto = harden({
+  [GOOD_PASS_STYLE]: REMOTE_STYLE,
+  toString: Object, // Any function will do
+  [Symbol.toStringTag]: 'Alleged: Good remotable proto',
+});
+
+const badRemotableProto1 = harden({
+  [BAD_PASS_STYLE]: REMOTE_STYLE,
+  toString: Object, // Any function will do
+  [Symbol.toStringTag]: 'Alleged: Good remotable proto',
+});
+const badRemotableProto2 = harden({
+  [GOOD_PASS_STYLE]: 'string',
+  toString: Object, // Any function will do
+  [Symbol.toStringTag]: 'Alleged: Good remotable proto',
+});
+const badRemotableProto3 = harden({
+  [GOOD_PASS_STYLE]: REMOTE_STYLE,
+  toString: {}, // Any function will do
+  [Symbol.toStringTag]: 'Alleged: Good remotable proto',
+});
+const badRemotableProto4 = harden({
+  [GOOD_PASS_STYLE]: REMOTE_STYLE,
+  toString: Object, // Any function will do
+  [Symbol.toStringTag]: 'Bad remotable proto',
+});
+
+const sub = sup => harden({ __proto__: sup });
+
+test('getInterfaceOf validation', t => {
+  t.throws(() => getInterfaceOf(goodRemotableProto), {
+    message: /cannot serialize objects with non-methods like "Symbol\(passStyle\)" in .*/,
+  });
+  t.is(getInterfaceOf(badRemotableProto1), undefined);
+  t.is(getInterfaceOf(badRemotableProto2), undefined);
+  t.throws(() => getInterfaceOf(badRemotableProto3), {
+    message: /cannot serialize objects with non-methods like "toString" in .*/,
+  });
+  t.throws(() => getInterfaceOf(badRemotableProto4), {
+    message: /cannot serialize objects with non-methods like "Symbol\(passStyle\)" in .*/,
+  });
+
+  t.is(
+    getInterfaceOf(sub(goodRemotableProto)),
+    'Alleged: Good remotable proto',
+  );
+  t.is(getInterfaceOf(sub(badRemotableProto1)), undefined);
+  t.is(getInterfaceOf(sub(badRemotableProto2)), undefined);
+  t.throws(() => getInterfaceOf(sub(badRemotableProto3)), {
+    message: /toString must be a function/,
+  });
+  t.throws(() => getInterfaceOf(sub(badRemotableProto4)), {
+    message: /For now, iface "Bad remotable proto" must be "Remotable" or begin with "Alleged: "; unimplemented/,
   });
 });
 

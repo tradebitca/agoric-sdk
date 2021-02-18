@@ -267,6 +267,21 @@ function isPassByCopyRecord(val) {
   return true;
 }
 
+const assertIface = iface => {
+  // TODO other possible ifaces, once we have third party veracity
+  assert.typeof(
+    iface,
+    'string',
+    X`Interface ${iface} must be a string; unimplemented`,
+  );
+  assert(
+    iface === 'Remotable' || iface.startsWith('Alleged: '),
+    X`For now, iface ${q(
+      iface,
+    )} must be "Remotable" or begin with "Alleged: "; unimplemented`,
+  );
+};
+
 const makeRemotableProto = (oldProto, allegedName) => {
   assert(
     oldProto === objectPrototype || oldProto === null,
@@ -299,7 +314,7 @@ const assertRemotableProto = val => {
     // @ts-ignore
     toString: { value: toStringValue },
     // @ts-ignore
-    [Symbol.toStringTag]: { value: toStringTagValue },
+    [Symbol.toStringTag]: { value: iface },
     ...rest
   } = getOwnPropertyDescriptors(val);
   assert(
@@ -311,7 +326,7 @@ const assertRemotableProto = val => {
     X`Expected ${q(REMOTE_STYLE)}, not ${q(passStyleValue)}`,
   );
   assert.typeof(toStringValue, 'function', X`toString must be a function`);
-  assert.typeof(toStringTagValue, 'string', X`@@toStringTag must be a string`);
+  assertIface(iface);
 };
 
 /**
@@ -954,19 +969,7 @@ export function makeMarshal(
  * @returns {object} remotable, modified for debuggability
  */
 function Remotable(iface = 'Remotable', props = undefined, remotable = {}) {
-  // TODO unimplemented
-  assert.typeof(
-    iface,
-    'string',
-    X`Interface ${iface} must be a string; unimplemented`,
-  );
-  // TODO unimplemented
-  assert(
-    iface === 'Remotable' || iface.startsWith('Alleged: '),
-    X`For now, iface ${q(
-      iface,
-    )} must be "Remotable" or begin with "Alleged: "; unimplemented`,
-  );
+  assertIface(iface);
   iface = pureCopy(harden(iface));
   // TODO: When iface is richer than just string, we need to get the allegedName
   // in a different way.
