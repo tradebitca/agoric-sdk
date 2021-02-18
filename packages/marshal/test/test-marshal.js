@@ -284,17 +284,11 @@ const badRemotableProto4 = harden({
 const sub = sup => harden({ __proto__: sup });
 
 test('getInterfaceOf validation', t => {
-  t.throws(() => getInterfaceOf(goodRemotableProto), {
-    message: /cannot serialize objects with non-methods like "Symbol\(passStyle\)" in .*/,
-  });
+  t.is(getInterfaceOf(goodRemotableProto), undefined);
   t.is(getInterfaceOf(badRemotableProto1), undefined);
   t.is(getInterfaceOf(badRemotableProto2), undefined);
-  t.throws(() => getInterfaceOf(badRemotableProto3), {
-    message: /cannot serialize objects with non-methods like "toString" in .*/,
-  });
-  t.throws(() => getInterfaceOf(badRemotableProto4), {
-    message: /cannot serialize objects with non-methods like "Symbol\(passStyle\)" in .*/,
-  });
+  t.is(getInterfaceOf(badRemotableProto3), undefined);
+  t.is(getInterfaceOf(badRemotableProto4), undefined);
 
   t.is(
     getInterfaceOf(sub(goodRemotableProto)),
@@ -302,12 +296,40 @@ test('getInterfaceOf validation', t => {
   );
   t.is(getInterfaceOf(sub(badRemotableProto1)), undefined);
   t.is(getInterfaceOf(sub(badRemotableProto2)), undefined);
-  t.throws(() => getInterfaceOf(sub(badRemotableProto3)), {
-    message: /toString must be a function/,
-  });
-  t.throws(() => getInterfaceOf(sub(badRemotableProto4)), {
-    message: /For now, iface "Bad remotable proto" must be "Remotable" or begin with "Alleged: "; unimplemented/,
-  });
+  t.is(getInterfaceOf(sub(badRemotableProto3)), undefined);
+  t.is(getInterfaceOf(sub(badRemotableProto4)), undefined);
+});
+
+const NON_METHOD = {
+  message: /cannot serialize objects with non-methods like .* in .*/,
+};
+const TO_STRING_NONFUNC = {
+  message: /toString must be a function/,
+};
+const IFACE_ALLEGED = {
+  message: /For now, iface "Bad remotable proto" must be "Remotable" or begin with "Alleged: "; unimplemented/,
+};
+const UNEXPECTED_PROPS = {
+  message: /Unexpected properties on Remotable Proto .*/,
+};
+const EXPECTED_PRESENCE = {
+  message: /Expected "presence", not "string"/,
+};
+
+// Parallels the getInterfaceOf validation cases, explaining why
+// each failure failed.
+test('passStyleOf validation of remotables', t => {
+  t.throws(() => passStyleOf(goodRemotableProto), NON_METHOD);
+  t.throws(() => passStyleOf(badRemotableProto1), NON_METHOD);
+  t.throws(() => passStyleOf(badRemotableProto2), NON_METHOD);
+  t.throws(() => passStyleOf(badRemotableProto3), NON_METHOD);
+  t.throws(() => passStyleOf(badRemotableProto4), NON_METHOD);
+
+  t.is(passStyleOf(sub(goodRemotableProto)), REMOTE_STYLE);
+  t.throws(() => passStyleOf(sub(badRemotableProto1)), UNEXPECTED_PROPS);
+  t.throws(() => passStyleOf(sub(badRemotableProto2)), EXPECTED_PRESENCE);
+  t.throws(() => passStyleOf(sub(badRemotableProto3)), TO_STRING_NONFUNC);
+  t.throws(() => passStyleOf(sub(badRemotableProto4)), IFACE_ALLEGED);
 });
 
 test('records', t => {

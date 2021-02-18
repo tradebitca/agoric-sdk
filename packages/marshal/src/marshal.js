@@ -267,6 +267,24 @@ function isPassByCopyRecord(val) {
   return true;
 }
 
+// Below we have a series of paired predicate functions and assertion
+// functions. The semantics of the assertion function is just to assert that
+// the corresponding predicate function would have returned true. But it
+// reproduces the internal tests so failures can give a better error message.
+// Please maintain these pairs so their internal logic means the same thing,
+// and so that they read as parallel to each other as possible.
+
+/**
+ * @param {*} iface
+ * @returns {boolean}
+ */
+const isIface = iface =>
+  typeof iface === 'string' &&
+  (iface === 'Remotable' || iface.startsWith('Alleged: '));
+
+/**
+ * @param {InterfaceSpec} iface
+ */
 const assertIface = iface => {
   // TODO other possible ifaces, once we have third party veracity
   assert.typeof(
@@ -282,59 +300,123 @@ const assertIface = iface => {
   );
 };
 
-const makeRemotableProto = (oldProto, allegedName) => {
+/**
+ * @param {Object|null} oldProto
+ * @param {InterfaceSpec} iface
+ * @returns {Object}
+ */
+const makeRemotableProto = (oldProto, iface) => {
   assert(
     oldProto === objectPrototype || oldProto === null,
     X`For now, remotables cannot inherit from anything unusual`,
   );
   // Assign the arrow function to a variable to set its .name.
-  const toString = () => `[${allegedName}]`;
+  const toString = () => `[${iface}]`;
   return harden({
     __proto__: oldProto,
     [PASS_STYLE]: REMOTE_STYLE,
     toString,
-    [Symbol.toStringTag]: allegedName,
+    [Symbol.toStringTag]: iface,
   });
 };
 
+/**
+ * @param {*} val
+ * @returns {boolean}
+ */
+const isRemotableProto = val => {
+  if (
+    !(typeof val === 'object' && !Array.isArray(val) && val !== null) &&
+    isFrozen(val)
+  ) {
+    return false;
+  }
+  const protoProto = getPrototypeOf(val);
+  if (!(protoProto === objectPrototype || protoProto === null)) {
+    return false;
+  }
+  if (!isFrozen(val)) {
+    return false;
+  }
+  const {
+    // @ts-ignore
+    [PASS_STYLE]: passStyleDesc,
+    toString: toStringDesc,
+    // @ts-ignore
+    [Symbol.toStringTag]: ifaceDesc,
+    ...rest
+  } = getOwnPropertyDescriptors(val);
+  return (
+    ownKeys(rest).length === 0 &&
+    passStyleDesc &&
+    passStyleDesc.value === REMOTE_STYLE &&
+    toStringDesc &&
+    // @ts-ignore
+    typeof toStringDesc.value === 'function' &&
+    isIface(ifaceDesc && ifaceDesc.value)
+  );
+};
+
+/**
+ * @param {Object} val
+ */
 const assertRemotableProto = val => {
   assert.typeof(val, 'object', X`cannot serialize non-objects like ${val}`);
   assert(!Array.isArray(val), X`Arrays cannot be pass-by-remote`);
   assert(val !== null, X`null cannot be pass-by-remote`);
+  assert(isFrozen(val), X`The Remotable proto must be frozen`);
 
   const protoProto = getPrototypeOf(val);
   assert(
     protoProto === objectPrototype || protoProto === null,
     X`The Remotable Proto marker cannot inherit from anything unusual`,
   );
-  assert(isFrozen(val), X`The Remotable proto must be frozen`);
   const {
     // @ts-ignore
-    [PASS_STYLE]: { value: passStyleValue },
+    [PASS_STYLE]: passStyleDesc,
+    toString: toStringDesc,
     // @ts-ignore
-    toString: { value: toStringValue },
-    // @ts-ignore
-    [Symbol.toStringTag]: { value: iface },
+    [Symbol.toStringTag]: ifaceDesc,
     ...rest
   } = getOwnPropertyDescriptors(val);
   assert(
     ownKeys(rest).length === 0,
-    X`Unexpect properties on Remotable Proto ${ownKeys(rest)}`,
+    X`Unexpected properties on Remotable Proto ${ownKeys(rest)}`,
   );
+  const passStyleValue = passStyleDesc && passStyleDesc.value;
   assert(
     passStyleValue === REMOTE_STYLE,
     X`Expected ${q(REMOTE_STYLE)}, not ${q(passStyleValue)}`,
   );
+  // @ts-ignore
+  const toStringValue = toStringDesc && toStringDesc.value;
   assert.typeof(toStringValue, 'function', X`toString must be a function`);
-  assertIface(iface);
+  assertIface(ifaceDesc && ifaceDesc.value);
 };
+
+/**
+ * @param {*} val The remotable candidate to check
+ * @returns {boolean}
+ */
+function canBeRemotable(val) {
+  if (!(typeof val === 'object' && !Array.isArray(val) && val !== null)) {
+    return false;
+  }
+  const descs = getOwnPropertyDescriptors(val);
+  const keys = ownKeys(descs); // enumerable-and-not, string-or-Symbol
+  return keys.every(
+    key =>
+      !('get' in descs[/** @type {string} */ (key)]) &&
+      typeof val[key] === 'function',
+  );
+}
 
 /**
  * Ensure that val could become a legitimate remotable.  This is used
  * internally both in the construction of a new remotable and
  * mustPassByRemote.
  *
- * @param {*} val The remotable candidate to check
+ * @param {Object} val The remotable candidate to check
  */
 function assertCanBeRemotable(val) {
   // throws exception if cannot
@@ -346,8 +428,7 @@ function assertCanBeRemotable(val) {
   const keys = ownKeys(descs); // enumerable-and-not, string-or-Symbol
   keys.forEach(key => {
     assert(
-      // @ts-ignore
-      !('get' in descs[key]),
+      !('get' in descs[/** @type {string} */ (key)]),
       X`cannot serialize objects with getters like ${q(String(key))} in ${val}`,
     );
     assert.typeof(
@@ -358,6 +439,18 @@ function assertCanBeRemotable(val) {
       )} in ${val}`,
     );
   });
+}
+
+/**
+ * @param {*} val
+ * @returns {boolean}
+ */
+function isRemotable(val) {
+  if (!(isFrozen(val) && canBeRemotable(val))) {
+    return false;
+  }
+  const p = getPrototypeOf(val);
+  return p === null || p === objectPrototype || isRemotableProto(p);
 }
 
 /**
@@ -376,13 +469,14 @@ function assertRemotable(val) {
 
 /** @type {MarshalGetInterfaceOf} */
 const getInterfaceOf = val => {
-  if (typeof val !== 'object' || val === null) {
+  if (
+    typeof val !== 'object' ||
+    val === null ||
+    val[PASS_STYLE] !== REMOTE_STYLE ||
+    !isRemotable(val)
+  ) {
     return undefined;
   }
-  if (val[PASS_STYLE] !== REMOTE_STYLE) {
-    return undefined;
-  }
-  assertRemotable(val);
   return val[Symbol.toStringTag];
 };
 harden(getInterfaceOf);
@@ -973,7 +1067,6 @@ function Remotable(iface = 'Remotable', props = undefined, remotable = {}) {
   iface = pureCopy(harden(iface));
   // TODO: When iface is richer than just string, we need to get the allegedName
   // in a different way.
-  const allegedName = iface;
   assert(props === undefined, X`Remotable props not yet implemented ${props}`);
 
   // Fail fast: check that the unmodified object is able to become a Remotable.
@@ -988,7 +1081,7 @@ function Remotable(iface = 'Remotable', props = undefined, remotable = {}) {
   );
   const remotableProto = makeRemotableProto(
     getPrototypeOf(remotable),
-    allegedName,
+    /** @type {string} */ (iface),
   );
 
   // Take a static copy of the enumerable own properties as data properties.
