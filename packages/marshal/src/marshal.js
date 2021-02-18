@@ -438,8 +438,12 @@ export function passStyleOf(val) {
         return 'null';
       }
       if (QCLASS in val) {
-        // TODO Hilbert hotel
-        assert.fail(X`property ${q(QCLASS)} reserved`);
+        // Hilbert hotel
+        assert(
+          isPassByCopyRecord(val),
+          X`${q(QCLASS)} may only appear in pass-by-copy records ${val}`,
+        );
+        return 'copyRecord';
       }
       assert(
         isFrozen(val),
@@ -724,6 +728,22 @@ export function makeMarshal(
 
           switch (passStyle) {
             case 'copyRecord': {
+              if (QCLASS in val) {
+                // Hilbert hotel
+                const { [QCLASS]: qclassValue, ...rest } = val;
+                if (ownKeys(rest).length === 0) {
+                  return harden({
+                    [QCLASS]: 'hilbert',
+                    original: encode(qclassValue),
+                  });
+                } else {
+                  return harden({
+                    [QCLASS]: 'hilbert',
+                    original: encode(qclassValue),
+                    rest: encode(rest),
+                  });
+                }
+              }
               // Currently copyRecord allows only string keys so this will
               // work. If we allow sortable symbol keys, this will need to
               // become more interesting.
@@ -886,6 +906,23 @@ export function makeMarshal(
           case 'slot': {
             const slot = slots[Nat(rawTree.index)];
             return ibidTable.register(convertSlotToVal(slot, rawTree.iface));
+          }
+
+          case 'hilbert': {
+            assert(
+              'original' in rawTree,
+              X`Invalid Hilbert Hotel encoding ${rawTree}`,
+            );
+            if ('rest' in rawTree) {
+              return ibidTable.register({
+                [QCLASS]: fullRevive(rawTree.original),
+                ...fullRevive(rawTree.rest),
+              });
+            } else {
+              return ibidTable.register({
+                [QCLASS]: fullRevive(rawTree.original),
+              });
+            }
           }
 
           default: {
